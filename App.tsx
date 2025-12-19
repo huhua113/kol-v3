@@ -1,21 +1,24 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { BarChart3, Users, FileText, Sparkles, Download, CheckCircle2, Zap } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Download, CheckCircle2, Zap } from 'lucide-react';
 
 import { Kol, Visit, ViewTab } from './types';
-import { LEVELS, PRODUCTS, DISEASE_AREAS } from './constants';
-
-import { Card } from './components/ui/Card';
-import { Button } from './components/ui/Button';
 import { LoginView } from './components/views/LoginView';
 import { DashboardView } from './components/views/DashboardView';
 import { KolListView } from './components/views/KolListView';
 import { KolDetailView } from './components/views/KolDetailView';
 import { CompetitorView } from './components/views/CompetitorView';
+import { AddKolModal } from './components/modals/AddKolModal';
+import { VisitModal } from './components/modals/VisitModal';
+import BottomNav from './components/ui/BottomNav';
 
 const STORAGE_KEYS = {
   KOLS: 'ckm_pro_kols_v2',
   VISITS: 'ckm_pro_visits_v2'
 };
+
+const MemoizedKolListView = React.memo(KolListView);
+const MemoizedDashboardView = React.memo(DashboardView);
+const MemoizedCompetitorView = React.memo(CompetitorView);
 
 export default function App() {
   const [auth, setAuth] = useState(false);
@@ -50,18 +53,6 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showVisitModal, setShowVisitModal] = useState(false);
   
-  const [importText, setImportText] = useState('');
-  const [newVisit, setNewVisit] = useState({ 
-    date: new Date().toISOString().split('T')[0], 
-    content: '', 
-    level: 3, 
-    competitor: '',
-    products: [] as string[],
-    diseaseAreas: [] as string[],
-    efficacyInfo: '',
-    safetyInfo: ''
-  });
-
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.KOLS, JSON.stringify(kols));
   }, [kols]);
@@ -73,17 +64,17 @@ export default function App() {
   const selectedKol = useMemo(() => kols.find(k => k.id === selectedKolId) || null, [kols, selectedKolId]);
   const modalKol = useMemo(() => kols.find(k => k.id === (quickRecordKolId || selectedKolId)) || null, [kols, quickRecordKolId, selectedKolId]);
 
-  const triggerToast = (msg: string) => {
+  const triggerToast = useCallback((msg: string) => {
     setSuccessToast({ show: true, msg });
     setTimeout(() => setSuccessToast({ show: false, msg: '' }), 3000);
-  };
+  }, []);
 
   const handleLogin = () => {
     if (passcode === '1234') setAuth(true);
     else alert('邀请码错误');
   };
 
-  const handleImport = () => {
+  const handleAddKols = useCallback((importText: string) => {
     const lines = importText.split('\n').filter(line => line.trim() !== '');
     if (lines.length === 0) return;
 
@@ -104,12 +95,11 @@ export default function App() {
     }).filter(k => k.name && k.name !== '未知姓名');
     
     setKols(prev => [...prev, ...newKols]);
-    setImportText('');
     setShowAddModal(false);
     triggerToast(`成功导入 ${newKols.length} 位专家`);
-  };
+  }, [triggerToast]);
 
-  const handleBatchUpdateLevel = (ids: string[], level: number) => {
+  const handleBatchUpdateLevel = useCallback((ids: string[], level: number) => {
     const newVisits: Visit[] = [];
     const dateStr = new Date().toISOString().split('T')[0];
     
@@ -135,43 +125,40 @@ export default function App() {
     
     setVisits(prevVisits => [...prevVisits, ...newVisits]);
     triggerToast(`成功批量更新 ${ids.length} 位专家`);
-  };
+  }, [triggerToast]);
 
-  const handleBatchDeleteKols = (ids: string[]) => {
+  const handleBatchDeleteKols = useCallback((ids: string[]) => {
     if (!window.confirm(`确定要永久删除选中的 ${ids.length} 位专家及其所有访谈记录吗？`)) return;
     
     setKols(prev => prev.filter(k => !ids.includes(k.id)));
     setVisits(prev => prev.filter(v => !ids.includes(v.kolId)));
     triggerToast(`已成功移除 ${ids.length} 位专家数据`);
-  };
+  }, [triggerToast]);
 
-  const addVisit = () => {
+  const handleSaveVisit = useCallback((visitData: Omit<Visit, 'id' | 'kolId' | 'timestamp'>) => {
     if (!modalKol) return;
-    const visitData: Visit = {
+
+    const newVisit: Visit = {
       id: `v_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       kolId: modalKol.id,
-      ...newVisit,
-      level: Number(newVisit.level),
+      ...visitData,
       timestamp: Date.now()
     };
     
-    setVisits(prev => [visitData, ...prev]);
+    setVisits(prev => [newVisit, ...prev]);
     setKols(prev => prev.map(k => k.id === modalKol.id ? { ...k, level: Number(newVisit.level) } : k));
     
     setShowVisitModal(false);
     setQuickRecordKolId(null);
-    resetForm();
     triggerToast('访谈记录已保存');
-  };
+  }, [modalKol, triggerToast]);
 
-  const handleQuickRecordVisit = (kol: Kol) => {
+  const handleQuickRecordVisit = useCallback((kol: Kol) => {
     setQuickRecordKolId(kol.id);
-    resetForm();
-    setNewVisit(prev => ({ ...prev, level: kol.level }));
     setShowVisitModal(true);
-  };
+  }, []);
 
-  const handleDeleteVisit = (id: string, type?: 'competitor' | 'efficacy' | 'safety') => {
+  const handleDeleteVisit = useCallback((id: string, type?: 'competitor' | 'efficacy' | 'safety') => {
     if (type) {
       setVisits(prevVisits => prevVisits.map(visit => {
         if (visit.id === id) {
@@ -190,21 +177,9 @@ export default function App() {
         triggerToast('访谈记录已移除');
       }
     }
-  };
+  }, [triggerToast]);
 
-  const resetForm = () => {
-    setNewVisit({ date: new Date().toISOString().split('T')[0], content: '', level: 3, competitor: '', products: [], diseaseAreas: [], efficacyInfo: '', safetyInfo: '' });
-  };
-
-  const toggleMultiSelect = (field: 'products' | 'diseaseAreas', value: string) => {
-    setNewVisit(prev => {
-      const current = prev[field];
-      const next = current.includes(value) ? current.filter(v => v !== value) : [...current, value];
-      return { ...prev, [field]: next };
-    });
-  };
-
-  const exportToExcel = () => {
+  const exportToExcel = useCallback(() => {
     const headers = ["日期", "专家姓名", "医院", "科室", "观念层级", "产品", "疾病领域", "拜访内容", "疗效价值信息", "安全性价值信息", "竞品动态"];
     const rows = visits.map(v => {
       const k = kols.find(kol => kol.id === v.kolId);
@@ -218,7 +193,7 @@ export default function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  };
+  }, [kols, visits]);
 
   if (!auth) return <LoginView passcode={passcode} setPasscode={setPasscode} onLogin={handleLogin} />;
 
@@ -259,7 +234,7 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto px-4 pb-28 scrollbar-hide">
         {activeTab === 'list' && (
-          <KolListView 
+          <MemoizedKolListView 
             kols={kols} 
             onSelectKol={(k) => setSelectedKolId(k.id)} 
             onAddClick={() => setShowAddModal(true)} 
@@ -270,115 +245,25 @@ export default function App() {
             setSortOrder={setSortOrder} 
           />
         )}
-        {activeTab === 'dashboard' && <DashboardView kols={kols} visits={visits} setActiveTab={setActiveTab} />}
-        {activeTab === 'competitors' && <CompetitorView kols={kols} visits={visits} onDeleteVisit={handleDeleteVisit} />}
+        {activeTab === 'dashboard' && <MemoizedDashboardView kols={kols} visits={visits} setActiveTab={setActiveTab} />}
+        {activeTab === 'competitors' && <MemoizedCompetitorView kols={kols} visits={visits} onDeleteVisit={handleDeleteVisit} />}
       </main>
 
-      <nav className="bg-white/95 backdrop-blur-xl border-t border-brand-border h-24 flex items-center justify-around fixed bottom-0 max-w-sm w-full z-40 px-6 rounded-t-[2.5rem] shadow-[0_-8px_30px_rgb(0,0,0,0.04)]">
-        {[ 
-          {id: 'list', icon: Users, label: '专家'}, 
-          {id: 'dashboard', icon: BarChart3, label: '概览'}, 
-          {id: 'competitors', icon: FileText, label: '详情'} 
-        ].map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} 
-            className={`flex flex-col items-center justify-center gap-1 transition-all duration-300 ${activeTab === tab.id ? 'text-brand-primary' : 'text-brand-subtext/50'}`}>
-            <div className={`p-3 rounded-2xl transition-all ${activeTab === tab.id ? 'bg-blue-50' : ''}`}>
-              <tab.icon size={22} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
-            </div>
-            <span className="text-[10px] font-bold tracking-tight">{tab.label}</span>
-          </button>
-        ))}
-      </nav>
+      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {showAddModal && (
-        <div className="fixed inset-0 bg-brand-text/20 backdrop-blur-sm z-[150] flex items-center justify-center p-6">
-          <Card className="w-full max-w-sm animate-scale-in">
-            <h3 className="font-bold text-lg mb-4 text-brand-text">批量导入专家</h3>
-            <div className="bg-brand-light rounded-xl p-4 mb-5 border border-brand-border">
-              <textarea className="w-full h-36 bg-transparent border-none text-sm focus:outline-none resize-none font-bold text-brand-text" placeholder={`韩晓东 上海市交通大学医学院附属第六人民医院 外科\n吴江 华东医院 营养科`} value={importText} onChange={e => setImportText(e.target.value)} />
-            </div>
-            <div className="flex gap-3">
-              <Button variant="ghost" onClick={() => setShowAddModal(false)} className="flex-1">取消</Button>
-              <Button onClick={handleImport} className="flex-1">开始导入</Button>
-            </div>
-          </Card>
-        </div>
+        <AddKolModal 
+          onClose={() => setShowAddModal(false)}
+          onImport={handleAddKols}
+        />
       )}
 
       {showVisitModal && (
-        <div className="fixed inset-0 bg-brand-text/20 backdrop-blur-md z-[150] flex items-end justify-center">
-          <div className="w-full max-w-sm bg-brand-bg rounded-t-[2.5rem] animate-slide-up p-7 overflow-y-auto max-h-[92vh] shadow-2xl border-t border-blue-100">
-            <div className="w-10 h-1 bg-brand-border/60 rounded-full mx-auto mb-6"></div>
-            <h3 className="font-bold text-xl mb-6 flex items-center gap-3 text-brand-text">
-              <div className="p-2.5 bg-blue-50 rounded-xl text-brand-primary"><Sparkles size={22} /></div>
-              访谈记录 <span className="text-sm font-medium text-brand-subtext">for {modalKol?.name}</span>
-            </h3>
-            <div className="space-y-6 pb-6">
-              <section>
-                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">访谈日期</label>
-                <input type="date" className="w-full bg-white px-4 py-3.5 rounded-xl border border-brand-border text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-brand-primary/10" value={newVisit.date} onChange={e => setNewVisit({...newVisit, date: e.target.value})} />
-              </section>
-
-              <section>
-                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">核心产品</label>
-                <div className="flex flex-wrap gap-2">
-                  {PRODUCTS.map(p => (
-                    <button key={p} onClick={() => toggleMultiSelect('products', p)} 
-                      className={`px-3 py-2 text-xs font-bold rounded-lg transition-all ${newVisit.products.includes(p) ? 'bg-brand-primary text-white shadow-sm' : 'bg-white text-brand-subtext border border-brand-border'}`}>{p}</button>
-                  ))}
-                </div>
-              </section>
-
-              <section>
-                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">目前针对心肝肾综合获益认知阶段</label>
-                <div className="grid grid-cols-1 gap-2.5">
-                  {LEVELS.map(l => ( 
-                    <button key={l.id} onClick={() => setNewVisit({...newVisit, level: l.id})} 
-                      className={`p-3 rounded-xl text-left transition-all flex justify-between items-center ${newVisit.level === l.id ? 'bg-brand-primary text-white shadow-soft ring-2 ring-white/50' : 'bg-white text-brand-subtext border border-brand-border hover:border-brand-primary'}`}>
-                      <span className="font-bold text-sm">{l.label}</span>
-                      {newVisit.level === l.id && <CheckCircle2 size={18} />}
-                    </button> 
-                  ))}
-                </div>
-              </section>
-              
-              <section>
-                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">疾病领域</label>
-                <div className="flex flex-wrap gap-2">
-                  {DISEASE_AREAS.map(p => (
-                    <button key={p} onClick={() => toggleMultiSelect('diseaseAreas', p)} 
-                      className={`px-3 py-2 text-xs font-bold rounded-lg transition-all ${newVisit.diseaseAreas.includes(p) ? 'bg-brand-secondary text-white shadow-sm' : 'bg-white text-brand-subtext border border-brand-border'}`}>{p}</button>
-                  ))}
-                </div>
-              </section>
-
-              <section>
-                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">核心内容</label>
-                <textarea className="w-full bg-white p-4 rounded-xl border border-brand-border text-sm h-28 outline-none focus:ring-2 focus:ring-brand-primary/10 resize-none font-bold text-brand-text" placeholder="记录本次访谈的核心沟通内容..." value={newVisit.content} onChange={e => setNewVisit({...newVisit, content: e.target.value})} />
-              </section>
-              
-              <section>
-                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">疗效价值信息</label>
-                <textarea className="w-full bg-white p-4 rounded-xl border border-brand-border text-sm h-24 outline-none focus:ring-2 focus:ring-brand-primary/10 resize-none font-bold text-brand-text" placeholder="记录专家对产品疗效、优势等方面的反馈..." value={newVisit.efficacyInfo} onChange={e => setNewVisit({...newVisit, efficacyInfo: e.target.value})} />
-              </section>
-
-              <section>
-                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">安全性价值信息</label>
-                <textarea className="w-full bg-white p-4 rounded-xl border border-brand-border text-sm h-24 outline-none focus:ring-2 focus:ring-brand-primary/10 resize-none font-bold text-brand-text" placeholder="记录专家对产品安全性、副作用等方面的反馈..." value={newVisit.safetyInfo} onChange={e => setNewVisit({...newVisit, safetyInfo: e.target.value})} />
-              </section>
-
-              <section>
-                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">竞品动态</label>
-                <textarea className="w-full bg-white p-4 rounded-xl border border-brand-border text-sm h-24 outline-none focus:ring-2 focus:ring-brand-primary/10 resize-none font-bold text-brand-text" placeholder="记录竞品相关的市场活动、专家反馈等..." value={newVisit.competitor || ''} onChange={e => setNewVisit({...newVisit, competitor: e.target.value})} />
-              </section>
-
-              <div className="flex gap-3 pt-2">
-                <Button variant="ghost" onClick={() => {setShowVisitModal(false); setQuickRecordKolId(null);}} className="flex-1">取消</Button>
-                <Button onClick={addVisit} className="flex-[2]">完成记录</Button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <VisitModal 
+          kol={modalKol}
+          onClose={() => {setShowVisitModal(false); setQuickRecordKolId(null);}}
+          onSave={handleSaveVisit}
+        />
       )}
     </div>
   );

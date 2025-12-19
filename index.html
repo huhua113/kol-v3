@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CKM Pro - Energetic Violet</title>
     <link rel="icon" href="data:image/svg+xml,%3csvg width='180' height='180' viewBox='0 0 180 180' fill='none' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='180' height='180' rx='50' fill='%236D28D9'/%3e%3cpath d='M110.1 53.05L76.3 98.45C75.3 99.85 76.5 101.75 78.1 101.75H102.7L82.9 135.55C81.4 137.65 84.4 139.15 85.9 137.05L119.7 91.65C120.7 90.25 119.5 88.35 117.9 88.35H93.3L113.1 54.55C114.6 52.45 111.6 50.95 110.1 53.05Z' fill='white'/%3e%3c/svg%3e" type="image/svg+xml">
+    
+    <!-- 性能优化: 预连接到字体服务器 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- 性能提示: Tailwind CSS 的 JIT CDN 编译器会在浏览器中实时生成样式。这对于开发很方便，但会影响初始加载速度。为了获得最佳性能，建议在生产环境中通过构建步骤预先生成所有 CSS。 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -48,7 +55,6 @@
       }
     </script>
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
       body {
         font-family: 'Inter', -apple-system, sans-serif;
         background-color: #F9FAFB;
