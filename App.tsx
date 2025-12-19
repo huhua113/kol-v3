@@ -1,74 +1,82 @@
-import React, { useState, useEffect } from 'react';
-import { BarChart3, Users, FileText, Sparkles, Layers } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { BarChart3, Users, FileText, Sparkles, Download, CheckCircle2, Zap } from 'lucide-react';
 
 import { Kol, Visit, ViewTab } from './types';
-import { INITIAL_SURGERY, INITIAL_NUTRITION, LEVELS } from './constants';
+import { LEVELS, PRODUCTS, DISEASE_AREAS } from './constants';
 
 import { Card } from './components/ui/Card';
 import { Button } from './components/ui/Button';
-
 import { LoginView } from './components/views/LoginView';
 import { DashboardView } from './components/views/DashboardView';
 import { KolListView } from './components/views/KolListView';
 import { KolDetailView } from './components/views/KolDetailView';
 import { CompetitorView } from './components/views/CompetitorView';
 
+const STORAGE_KEYS = {
+  KOLS: 'ckm_pro_kols_v2',
+  VISITS: 'ckm_pro_visits_v2'
+};
+
 export default function App() {
-  // State
   const [auth, setAuth] = useState(false);
   const [passcode, setPasscode] = useState('');
-  const [activeTab, setActiveTab] = useState<ViewTab>('list'); // Default to list (Experts)
+  const [activeTab, setActiveTab] = useState<ViewTab>('list');
+  const [successToast, setSuccessToast] = useState<{show: boolean, msg: string}>({show: false, msg: ''});
   
-  const [kols, setKols] = useState<Kol[]>([]);
-  const [visits, setVisits] = useState<Visit[]>([]);
-  const [selectedKol, setSelectedKol] = useState<Kol | null>(null);
+  const [kols, setKols] = useState<Kol[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.KOLS);
+      return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+      console.error("Failed to parse kols from localStorage", error);
+      return [];
+    }
+  });
+
+  const [visits, setVisits] = useState<Visit[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.VISITS);
+      return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+      console.error("Failed to parse visits from localStorage", error);
+      return [];
+    }
+  });
+
+  const [selectedKolId, setSelectedKolId] = useState<string | null>(null);
+  const [quickRecordKolId, setQuickRecordKolId] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'level-desc' | 'level-asc' | 'name-asc'>('level-desc');
   
-  // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showVisitModal, setShowVisitModal] = useState(false);
   
-  // Batch Mode State
-  const [isBatchMode, setIsBatchMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [showBatchModal, setShowBatchModal] = useState(false);
-
-  // Temporary state for forms
   const [importText, setImportText] = useState('');
   const [newVisit, setNewVisit] = useState({ 
     date: new Date().toISOString().split('T')[0], 
     content: '', 
     level: 3, 
-    competitor: '' 
+    competitor: '',
+    products: [] as string[],
+    diseaseAreas: [] as string[],
+    efficacyInfo: '',
+    safetyInfo: ''
   });
 
-  // --- Initialization & Effects ---
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.KOLS, JSON.stringify(kols));
+  }, [kols]);
 
   useEffect(() => {
-    const savedKols = localStorage.getItem('ckm_kols');
-    const savedVisits = localStorage.getItem('ckm_visits');
-    
-    if (savedKols) {
-      setKols(JSON.parse(savedKols));
-    } else {
-      // Initialize with default data
-      const initKols: Kol[] = [
-        ...INITIAL_SURGERY.map((n, i) => ({ id: `s_${i}`, name: n, dept: '代谢外科', level: 3 })),
-        ...INITIAL_NUTRITION.map((n, i) => ({ id: `n_${i}`, name: n, dept: '营养科', level: 3 }))
-      ];
-      setKols(initKols);
-      localStorage.setItem('ckm_kols', JSON.stringify(initKols));
-    }
+    localStorage.setItem(STORAGE_KEYS.VISITS, JSON.stringify(visits));
+  }, [visits]);
 
-    if (savedVisits) setVisits(JSON.parse(savedVisits));
-  }, []);
+  const selectedKol = useMemo(() => kols.find(k => k.id === selectedKolId) || null, [kols, selectedKolId]);
+  const modalKol = useMemo(() => kols.find(k => k.id === (quickRecordKolId || selectedKolId)) || null, [kols, quickRecordKolId, selectedKolId]);
 
-  useEffect(() => {
-    if (kols.length > 0) localStorage.setItem('ckm_kols', JSON.stringify(kols));
-    localStorage.setItem('ckm_visits', JSON.stringify(visits));
-  }, [kols, visits]);
-
-  // --- Logic Functions ---
+  const triggerToast = (msg: string) => {
+    setSuccessToast({ show: true, msg });
+    setTimeout(() => setSuccessToast({ show: false, msg: '' }), 3000);
+  };
 
   const handleLogin = () => {
     if (passcode === '1234') setAuth(true);
@@ -76,400 +84,302 @@ export default function App() {
   };
 
   const handleImport = () => {
-    const lines = importText.split('\n');
-    const newKols = lines.map((line, idx) => {
-      // Try to split by tab or space
-      const parts = line.split(/[\t\s]+/);
-      if (parts.length < 1) return null;
-      const name = parts[0];
-      const dept = parts.length > 1 ? parts[1] : '未知科室';
-      if (!name) return null;
-      return {
-        id: Date.now() + '_' + idx,
-        name,
-        dept,
-        level: 3 // Default S3
-      };
-    }).filter((k): k is Kol => k !== null);
+    const lines = importText.split('\n').filter(line => line.trim() !== '');
+    if (lines.length === 0) return;
 
-    setKols([...kols, ...newKols]);
+    const newKols: Kol[] = lines.map((line) => {
+      const parts = line.trim().split(/[\t\s]+/);
+      const name = parts[0] || '未知姓名';
+      let hospital = '未知医院', dept = '未知科室';
+      if (parts.length === 3) { hospital = parts[1]; dept = parts[2]; } 
+      else if (parts.length === 2) { dept = parts[1]; }
+      
+      return {
+        id: `kol_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_${name}`,
+        name,
+        hospital,
+        dept,
+        level: 3
+      };
+    }).filter(k => k.name && k.name !== '未知姓名');
+    
+    setKols(prev => [...prev, ...newKols]);
     setImportText('');
     setShowAddModal(false);
+    triggerToast(`成功导入 ${newKols.length} 位专家`);
+  };
+
+  const handleBatchUpdateLevel = (ids: string[], level: number) => {
+    const newVisits: Visit[] = [];
+    const dateStr = new Date().toISOString().split('T')[0];
+    
+    setKols(prevKols => prevKols.map(k => {
+      if (ids.includes(k.id)) {
+        newVisits.push({
+          id: `v_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          kolId: k.id,
+          date: dateStr,
+          content: `批量修改观念等级至 S${level}`,
+          level,
+          products: [],
+          diseaseAreas: [],
+          efficacyInfo: '',
+          safetyInfo: '',
+          competitor: null,
+          timestamp: Date.now()
+        });
+        return { ...k, level };
+      }
+      return k;
+    }));
+    
+    setVisits(prevVisits => [...prevVisits, ...newVisits]);
+    triggerToast(`成功批量更新 ${ids.length} 位专家`);
+  };
+
+  const handleBatchDeleteKols = (ids: string[]) => {
+    if (!window.confirm(`确定要永久删除选中的 ${ids.length} 位专家及其所有访谈记录吗？`)) return;
+    
+    setKols(prev => prev.filter(k => !ids.includes(k.id)));
+    setVisits(prev => prev.filter(v => !ids.includes(v.kolId)));
+    triggerToast(`已成功移除 ${ids.length} 位专家数据`);
   };
 
   const addVisit = () => {
-    if (!selectedKol) return;
-    
-    const visitEntry: Visit = {
-      id: Date.now(),
-      kolId: selectedKol.id,
-      date: newVisit.date,
-      content: newVisit.content,
+    if (!modalKol) return;
+    const visitData: Visit = {
+      id: `v_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      kolId: modalKol.id,
+      ...newVisit,
       level: Number(newVisit.level),
-      competitor: newVisit.competitor || null,
       timestamp: Date.now()
     };
-
-    // Update Visits
-    const updatedVisits = [...visits, visitEntry];
-    setVisits(updatedVisits);
-
-    // Update KOL Current Level
-    const updatedKols = kols.map(k => 
-      k.id === selectedKol.id ? { ...k, level: Number(newVisit.level) } : k
-    );
-    setKols(updatedKols);
     
-    // Update local selected state to reflect change immediately
-    setSelectedKol({ ...selectedKol, level: Number(newVisit.level) });
-
+    setVisits(prev => [visitData, ...prev]);
+    setKols(prev => prev.map(k => k.id === modalKol.id ? { ...k, level: Number(newVisit.level) } : k));
+    
     setShowVisitModal(false);
-    setNewVisit({ date: new Date().toISOString().split('T')[0], content: '', level: 3, competitor: '' });
+    setQuickRecordKolId(null);
+    resetForm();
+    triggerToast('访谈记录已保存');
   };
 
-  // --- Batch Logic ---
-
-  const toggleBatchMode = () => {
-      setIsBatchMode(!isBatchMode);
-      setSelectedIds(new Set()); // Clear selection on toggle
+  const handleQuickRecordVisit = (kol: Kol) => {
+    setQuickRecordKolId(kol.id);
+    resetForm();
+    setNewVisit(prev => ({ ...prev, level: kol.level }));
+    setShowVisitModal(true);
   };
 
-  const toggleSelection = (id: string) => {
-      const newSet = new Set(selectedIds);
-      if (newSet.has(id)) newSet.delete(id);
-      else newSet.add(id);
-      setSelectedIds(newSet);
-  };
-
-  const handleBatchUpdate = () => {
-     if (selectedIds.size === 0) return;
-
-     const timestamp = Date.now();
-     const level = Number(newVisit.level);
-     const date = newVisit.date;
-     const content = newVisit.content || '批量更新';
-     const competitor = newVisit.competitor || null;
-
-     // 1. Create visit records for all selected KOLs
-     const batchVisits: Visit[] = Array.from(selectedIds).map((kolId: string, index: number) => ({
-        id: timestamp + index,
-        kolId,
-        date,
-        content,
-        level,
-        competitor,
-        timestamp: timestamp
-     }));
-
-     setVisits([...visits, ...batchVisits]);
-
-     // 2. Update KOL levels
-     const updatedKols = kols.map(k => {
-         if (selectedIds.has(k.id)) {
-             return { ...k, level };
-         }
-         return k;
-     });
-     setKols(updatedKols);
-
-     // 3. Cleanup
-     setIsBatchMode(false);
-     setSelectedIds(new Set());
-     setShowBatchModal(false);
-     setNewVisit({ date: new Date().toISOString().split('T')[0], content: '', level: 3, competitor: '' });
-  };
-  
-  const handleBatchDelete = () => {
-    if (selectedIds.size === 0) return;
-    if (window.confirm(`您确定要删除选中的 ${selectedIds.size} 位专家吗？此操作将同时删除他们的所有拜访记录，且无法恢复。`)) {
-      // 1. Filter out deleted kols
-      const updatedKols = kols.filter(k => !selectedIds.has(k.id));
-      setKols(updatedKols);
-
-      // 2. Filter out visits of deleted kols
-      const updatedVisits = visits.filter(v => !selectedIds.has(v.kolId));
-      setVisits(updatedVisits);
-
-      // 3. Cleanup
-      setIsBatchMode(false);
-      setSelectedIds(new Set());
+  const handleDeleteVisit = (id: string, type?: 'competitor' | 'efficacy' | 'safety') => {
+    if (type) {
+      setVisits(prevVisits => prevVisits.map(visit => {
+        if (visit.id === id) {
+          const updatedVisit = { ...visit };
+          if (type === 'competitor') updatedVisit.competitor = null;
+          else if (type === 'efficacy') updatedVisit.efficacyInfo = "";
+          else if (type === 'safety') updatedVisit.safetyInfo = "";
+          return updatedVisit;
+        }
+        return visit;
+      }));
+      triggerToast('情报条目已移除');
+    } else {
+      if (window.confirm('您确定要永久删除此条访谈记录吗？')) {
+        setVisits(prev => prev.filter(v => v.id !== id));
+        triggerToast('访谈记录已移除');
+      }
     }
   };
 
-  const deleteVisit = (visitId: number) => {
-    if (!window.confirm("确定删除这条记录吗？专家观念将回滚到上一条记录的状态。")) return;
-
-    // 0. Find the visit to get kolId (needed if called from competitor view)
-    const visitToDelete = visits.find(v => v.id === visitId);
-    if (!visitToDelete) return;
-    const kolId = visitToDelete.kolId;
-
-    // 1. Remove the visit
-    const remainingVisits = visits.filter(v => v.id !== visitId);
-    setVisits(remainingVisits);
-
-    // 2. Find history for this KOL to determine rollback level
-    const kolHistory = remainingVisits
-      .filter(v => v.kolId === kolId)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.timestamp - b.timestamp);
-
-    // 3. Determine new level
-    let newLevel = 3; // Default
-    if (kolHistory.length > 0) {
-      newLevel = kolHistory[kolHistory.length - 1].level;
-    }
-
-    // 4. Update KOL
-    const updatedKols = kols.map(k => 
-      k.id === kolId ? { ...k, level: newLevel } : k
-    );
-    setKols(updatedKols);
-    
-    if (selectedKol && selectedKol.id === kolId) {
-      setSelectedKol({ ...selectedKol, level: newLevel });
-    }
+  const resetForm = () => {
+    setNewVisit({ date: new Date().toISOString().split('T')[0], content: '', level: 3, competitor: '', products: [], diseaseAreas: [], efficacyInfo: '', safetyInfo: '' });
   };
 
-  // --- Render ---
+  const toggleMultiSelect = (field: 'products' | 'diseaseAreas', value: string) => {
+    setNewVisit(prev => {
+      const current = prev[field];
+      const next = current.includes(value) ? current.filter(v => v !== value) : [...current, value];
+      return { ...prev, [field]: next };
+    });
+  };
+
+  const exportToExcel = () => {
+    const headers = ["日期", "专家姓名", "医院", "科室", "观念层级", "产品", "疾病领域", "拜访内容", "疗效价值信息", "安全性价值信息", "竞品动态"];
+    const rows = visits.map(v => {
+      const k = kols.find(kol => kol.id === v.kolId);
+      return [v.date, k?.name || "已删除", k?.hospital || "", k?.dept || "", `S${v.level}`, (v.products || []).join(", "), (v.diseaseAreas || []).join(", "), v.content.replace(/"/g, '""'), v.efficacyInfo.replace(/"/g, '""'), v.safetyInfo.replace(/"/g, '""'), (v.competitor || "").replace(/"/g, '""')];
+    });
+    const csvContent = "\uFEFF" + [headers, ...rows].map(r => r.map(cell => `"${cell}"`).join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute("download", `CKM_Data.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   if (!auth) return <LoginView passcode={passcode} setPasscode={setPasscode} onLogin={handleLogin} />;
 
   return (
-    <div className="max-w-sm mx-auto min-h-screen bg-brand-bg text-brand-text relative overflow-hidden shadow-2xl border-x border-brand-border">
-      
-      {/* Detail Overlay */}
-      {selectedKol && (
+    <div className="max-w-sm mx-auto min-h-screen bg-brand-bg relative overflow-hidden flex flex-col font-sans">
+      {successToast.show && (
+        <div className="fixed top-8 left-1/2 z-[200] animate-toast-in -translate-x-1/2 w-auto max-w-[80%]">
+           <div className="flex items-center gap-2.5 px-6 py-3.5 rounded-full bg-brand-primary text-white font-semibold shadow-soft border border-blue-400">
+              <CheckCircle2 size={18} className="shrink-0" />
+              <span className="text-sm whitespace-nowrap">{successToast.msg}</span>
+           </div>
+        </div>
+      )}
+
+      {selectedKol && !showVisitModal && (
         <KolDetailView 
           kol={selectedKol} 
           visits={visits} 
-          onBack={() => setSelectedKol(null)}
-          onDeleteVisit={deleteVisit}
-          onRecordVisit={() => setShowVisitModal(true)}
+          onBack={() => setSelectedKolId(null)} 
+          onDeleteVisit={handleDeleteVisit} 
+          onRecordVisit={() => setShowVisitModal(true)} 
         />
       )}
 
-      {/* Main Layout */}
-      <div className="flex flex-col h-screen">
-        {/* Header */}
-        <header className="px-6 pt-10 pb-2 bg-white/80 backdrop-blur-sm sticky top-0 z-10 flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-brand-primary to-brand-secondary flex items-center gap-2">
-                <Sparkles size={24} className="text-brand-primary" fill="currentColor" />
-                CKM Manager
-              </h1>
-              <p className="text-xs font-bold text-brand-subtext uppercase tracking-widest mt-1 ml-1">Professional Edition</p>
+      <header className="px-6 pt-10 pb-5 flex justify-between items-center bg-brand-bg">
+          <div className="animate-fade-in">
+            <h1 className="text-2xl font-extrabold text-brand-text flex items-center gap-2">
+              <Zap size={24} className="text-brand-primary" fill="currentColor" />
+              CKM Studio
+            </h1>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={exportToExcel} className="w-11 h-11 bg-white rounded-2xl flex items-center justify-center text-brand-primary shadow-sm border border-brand-border active:scale-90 transition-all">
+              <Download size={20} />
+            </button>
+          </div>
+      </header>
+
+      <main className="flex-1 overflow-y-auto px-4 pb-28 scrollbar-hide">
+        {activeTab === 'list' && (
+          <KolListView 
+            kols={kols} 
+            onSelectKol={(k) => setSelectedKolId(k.id)} 
+            onAddClick={() => setShowAddModal(true)} 
+            onQuickRecord={handleQuickRecordVisit}
+            onBatchUpdateLevel={handleBatchUpdateLevel}
+            onBatchDeleteKols={handleBatchDeleteKols}
+            sortOrder={sortOrder} 
+            setSortOrder={setSortOrder} 
+          />
+        )}
+        {activeTab === 'dashboard' && <DashboardView kols={kols} visits={visits} setActiveTab={setActiveTab} />}
+        {activeTab === 'competitors' && <CompetitorView kols={kols} visits={visits} onDeleteVisit={handleDeleteVisit} />}
+      </main>
+
+      <nav className="bg-white/95 backdrop-blur-xl border-t border-brand-border h-24 flex items-center justify-around fixed bottom-0 max-w-sm w-full z-40 px-6 rounded-t-[2.5rem] shadow-[0_-8px_30px_rgb(0,0,0,0.04)]">
+        {[ 
+          {id: 'list', icon: Users, label: '专家'}, 
+          {id: 'dashboard', icon: BarChart3, label: '概览'}, 
+          {id: 'competitors', icon: FileText, label: '详情'} 
+        ].map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} 
+            className={`flex flex-col items-center justify-center gap-1 transition-all duration-300 ${activeTab === tab.id ? 'text-brand-primary' : 'text-brand-subtext/50'}`}>
+            <div className={`p-3 rounded-2xl transition-all ${activeTab === tab.id ? 'bg-blue-50' : ''}`}>
+              <tab.icon size={22} strokeWidth={activeTab === tab.id ? 2.5 : 2} />
             </div>
-        </header>
-
-        {/* Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 pb-24 scrollbar-hide">
-          {activeTab === 'list' && (
-             <KolListView 
-               kols={kols} 
-               onSelectKol={setSelectedKol} 
-               onAddClick={() => setShowAddModal(true)}
-               isBatchMode={isBatchMode}
-               toggleBatchMode={toggleBatchMode}
-               selectedIds={selectedIds}
-               toggleSelection={toggleSelection}
-               onOpenBatchModal={() => setShowBatchModal(true)}
-               onBatchDelete={handleBatchDelete}
-               sortOrder={sortOrder}
-               setSortOrder={setSortOrder}
-             />
-          )}
-          {activeTab === 'dashboard' && <DashboardView kols={kols} visits={visits} setActiveTab={setActiveTab} />}
-          {activeTab === 'competitors' && (
-            <CompetitorView 
-              kols={kols} 
-              visits={visits} 
-              onDeleteVisit={deleteVisit} 
-            />
-          )}
-        </main>
-
-        {/* Bottom Nav */}
-        <nav className="bg-white/90 backdrop-blur-md border-t border-brand-border h-16 flex items-center justify-around absolute bottom-0 w-full z-10 shadow-[0_-5px_15px_rgba(0,0,0,0.02)]">
-          <button 
-             onClick={() => setActiveTab('list')}
-             className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 ${activeTab === 'list' ? 'text-brand-secondary scale-110' : 'text-gray-400 hover:text-gray-600'}`}
-          >
-            <Users size={24} strokeWidth={activeTab === 'list' ? 2.5 : 2} />
-            <span className="text-[10px] mt-1 font-bold">专家</span>
+            <span className="text-[10px] font-bold tracking-tight">{tab.label}</span>
           </button>
-          <button 
-            onClick={() => setActiveTab('dashboard')}
-            className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 ${activeTab === 'dashboard' ? 'text-brand-primary scale-110' : 'text-gray-400 hover:text-gray-600'}`}
-          >
-            <BarChart3 size={24} strokeWidth={activeTab === 'dashboard' ? 2.5 : 2} />
-            <span className="text-[10px] mt-1 font-bold">概览</span>
-          </button>
-          <button 
-             onClick={() => setActiveTab('competitors')}
-             className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 ${activeTab === 'competitors' ? 'text-brand-accent scale-110' : 'text-gray-400 hover:text-gray-600'}`}
-          >
-            <FileText size={24} strokeWidth={activeTab === 'competitors' ? 2.5 : 2} />
-            <span className="text-[10px] mt-1 font-bold">竞品</span>
-          </button>
-        </nav>
-      </div>
+        ))}
+      </nav>
 
-      {/* Modals */}
-      
-      {/* Add KOL Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-brand-text/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-sm animate-scale-in border-none shadow-2xl">
+        <div className="fixed inset-0 bg-brand-text/20 backdrop-blur-sm z-[150] flex items-center justify-center p-6">
+          <Card className="w-full max-w-sm animate-scale-in">
             <h3 className="font-bold text-lg mb-4 text-brand-text">批量导入专家</h3>
-            <p className="text-xs text-brand-subtext mb-3">直接粘贴Excel (姓名 [空格/Tab] 科室)</p>
-            <textarea 
-              className="w-full h-32 p-3 border border-brand-border rounded-xl text-sm mb-4 focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary focus:outline-none transition-all"
-              placeholder={`例如：\n韩晓东 代谢外科\n吴江 营养科`}
-              value={importText}
-              onChange={e => setImportText(e.target.value)}
-            />
+            <div className="bg-brand-light rounded-xl p-4 mb-5 border border-brand-border">
+              <textarea className="w-full h-36 bg-transparent border-none text-sm focus:outline-none resize-none font-bold text-brand-text" placeholder={`韩晓东 上海市交通大学医学院附属第六人民医院 外科\n吴江 华东医院 营养科`} value={importText} onChange={e => setImportText(e.target.value)} />
+            </div>
             <div className="flex gap-3">
-              <Button variant="ghost" onClick={() => setShowAddModal(false)} className="flex-1 bg-brand-light">取消</Button>
-              <Button onClick={handleImport} className="flex-1 shadow-lg shadow-brand-primary/30">导入 (默认S3)</Button>
+              <Button variant="ghost" onClick={() => setShowAddModal(false)} className="flex-1">取消</Button>
+              <Button onClick={handleImport} className="flex-1">开始导入</Button>
             </div>
           </Card>
         </div>
       )}
 
-      {/* Add Visit Modal (Single) */}
       {showVisitModal && (
-        <div className="fixed inset-0 bg-brand-text/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center sm:p-4">
-          <Card className="w-full max-w-sm rounded-b-none sm:rounded-2xl animate-slide-up p-6 border-none shadow-2xl">
-            <div className="w-12 h-1.5 bg-brand-border rounded-full mx-auto mb-6 sm:hidden"></div>
-            <h3 className="font-bold text-xl mb-5 text-brand-text flex items-center gap-2">
-                <Sparkles size={20} className="text-brand-primary" />
-                记录拜访
+        <div className="fixed inset-0 bg-brand-text/20 backdrop-blur-md z-[150] flex items-end justify-center">
+          <div className="w-full max-w-sm bg-brand-bg rounded-t-[2.5rem] animate-slide-up p-7 overflow-y-auto max-h-[92vh] shadow-2xl border-t border-blue-100">
+            <div className="w-10 h-1 bg-brand-border/60 rounded-full mx-auto mb-6"></div>
+            <h3 className="font-bold text-xl mb-6 flex items-center gap-3 text-brand-text">
+              <div className="p-2.5 bg-blue-50 rounded-xl text-brand-primary"><Sparkles size={22} /></div>
+              访谈记录 <span className="text-sm font-medium text-brand-subtext">for {modalKol?.name}</span>
             </h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-brand-subtext uppercase tracking-wide mb-1.5 block">日期</label>
-                <input 
-                  type="date" 
-                  className="w-full p-3 border border-brand-border rounded-xl focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary focus:outline-none transition-all"
-                  value={newVisit.date}
-                  onChange={e => setNewVisit({...newVisit, date: e.target.value})}
-                />
-              </div>
+            <div className="space-y-6 pb-6">
+              <section>
+                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">访谈日期</label>
+                <input type="date" className="w-full bg-white px-4 py-3.5 rounded-xl border border-brand-border text-sm font-bold text-brand-text outline-none focus:ring-2 focus:ring-brand-primary/10" value={newVisit.date} onChange={e => setNewVisit({...newVisit, date: e.target.value})} />
+              </section>
 
-              <div>
-                <label className="text-xs font-bold text-brand-subtext uppercase tracking-wide mb-2 block">拜访后观念层级</label>
-                <div className="grid grid-cols-5 gap-2">
-                  {[1,2,3,4,5].map(l => (
-                    <button
-                      key={l}
-                      onClick={() => setNewVisit({...newVisit, level: l})}
-                      className={`p-2.5 rounded-xl text-sm font-bold border transition-all ${
-                        newVisit.level === l 
-                        ? 'bg-brand-primary text-white border-brand-primary shadow-lg shadow-brand-primary/30 scale-105' 
-                        : 'bg-brand-light text-brand-subtext border-transparent hover:bg-white hover:border-brand-border'
-                      }`}
-                    >
-                      S{l}
-                    </button>
+              <section>
+                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">核心产品</label>
+                <div className="flex flex-wrap gap-2">
+                  {PRODUCTS.map(p => (
+                    <button key={p} onClick={() => toggleMultiSelect('products', p)} 
+                      className={`px-3 py-2 text-xs font-bold rounded-lg transition-all ${newVisit.products.includes(p) ? 'bg-brand-primary text-white shadow-sm' : 'bg-white text-brand-subtext border border-brand-border'}`}>{p}</button>
                   ))}
                 </div>
-                <div className="text-center text-sm text-brand-primary mt-2 font-bold bg-indigo-50 py-1 rounded-lg">
-                  {LEVELS.find(l => l.id === newVisit.level)?.label}
-                </div>
-              </div>
+              </section>
 
-              <div>
-                <label className="text-xs font-bold text-brand-subtext uppercase tracking-wide mb-1.5 block">沟通内容</label>
-                <textarea 
-                  className="w-full p-3 border border-brand-border rounded-xl h-24 focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary focus:outline-none transition-all"
-                  placeholder="主要聊了什么..."
-                  value={newVisit.content}
-                  onChange={e => setNewVisit({...newVisit, content: e.target.value})}
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-brand-accent uppercase tracking-wide mb-1.5 block">竞品信息 (选填)</label>
-                <input 
-                  className="w-full p-3 border border-rose-100 rounded-xl bg-rose-50/50 focus:bg-white focus:ring-2 focus:ring-rose-200 focus:border-rose-300 focus:outline-none transition-all placeholder:text-rose-300"
-                  placeholder="专家提到的竞品动态..."
-                  value={newVisit.competitor}
-                  onChange={e => setNewVisit({...newVisit, competitor: e.target.value})}
-                />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <Button variant="ghost" onClick={() => setShowVisitModal(false)} className="flex-1 bg-brand-light">取消</Button>
-                <Button onClick={addVisit} className="flex-1 shadow-xl shadow-brand-primary/30">保存记录</Button>
-              </div>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Batch Update Modal */}
-      {showBatchModal && (
-        <div className="fixed inset-0 bg-brand-text/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center sm:p-4">
-          <Card className="w-full max-w-sm rounded-b-none sm:rounded-2xl animate-slide-up p-6 border-none shadow-2xl">
-            <div className="w-12 h-1.5 bg-brand-border rounded-full mx-auto mb-6 sm:hidden"></div>
-            <h3 className="font-bold text-xl mb-5 text-brand-text flex items-center gap-2">
-                <Layers size={20} className="text-brand-text" />
-                批量更新专家 ({selectedIds.size})
-            </h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-brand-subtext uppercase tracking-wide mb-1.5 block">日期</label>
-                <input 
-                  type="date" 
-                  className="w-full p-3 border border-brand-border rounded-xl focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary focus:outline-none transition-all"
-                  value={newVisit.date}
-                  onChange={e => setNewVisit({...newVisit, date: e.target.value})}
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-brand-subtext uppercase tracking-wide mb-2 block">新观念层级</label>
-                <div className="grid grid-cols-5 gap-2">
-                  {[1,2,3,4,5].map(l => (
-                    <button
-                      key={l}
-                      onClick={() => setNewVisit({...newVisit, level: l})}
-                      className={`p-2.5 rounded-xl text-sm font-bold border transition-all ${
-                        newVisit.level === l 
-                        ? 'bg-brand-text text-white border-brand-text shadow-lg scale-105' 
-                        : 'bg-brand-light text-brand-subtext border-transparent hover:bg-white hover:border-brand-border'
-                      }`}
-                    >
-                      S{l}
-                    </button>
+              <section>
+                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">目前针对心肝肾综合获益认知阶段</label>
+                <div className="grid grid-cols-1 gap-2.5">
+                  {LEVELS.map(l => ( 
+                    <button key={l.id} onClick={() => setNewVisit({...newVisit, level: l.id})} 
+                      className={`p-3 rounded-xl text-left transition-all flex justify-between items-center ${newVisit.level === l.id ? 'bg-brand-primary text-white shadow-soft ring-2 ring-white/50' : 'bg-white text-brand-subtext border border-brand-border hover:border-brand-primary'}`}>
+                      <span className="font-bold text-sm">{l.label}</span>
+                      {newVisit.level === l.id && <CheckCircle2 size={18} />}
+                    </button> 
                   ))}
                 </div>
-                <div className="text-center text-sm text-brand-text mt-2 font-bold bg-gray-100 py-1 rounded-lg">
-                  {LEVELS.find(l => l.id === newVisit.level)?.label}
+              </section>
+              
+              <section>
+                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">疾病领域</label>
+                <div className="flex flex-wrap gap-2">
+                  {DISEASE_AREAS.map(p => (
+                    <button key={p} onClick={() => toggleMultiSelect('diseaseAreas', p)} 
+                      className={`px-3 py-2 text-xs font-bold rounded-lg transition-all ${newVisit.diseaseAreas.includes(p) ? 'bg-brand-secondary text-white shadow-sm' : 'bg-white text-brand-subtext border border-brand-border'}`}>{p}</button>
+                  ))}
                 </div>
-              </div>
+              </section>
 
-              <div>
-                <label className="text-xs font-bold text-brand-subtext uppercase tracking-wide mb-1.5 block">批量备注</label>
-                <textarea 
-                  className="w-full p-3 border border-brand-border rounded-xl h-24 focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary focus:outline-none transition-all"
-                  placeholder="例如：学术会议统一拜访..."
-                  value={newVisit.content}
-                  onChange={e => setNewVisit({...newVisit, content: e.target.value})}
-                />
-              </div>
+              <section>
+                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">核心内容</label>
+                <textarea className="w-full bg-white p-4 rounded-xl border border-brand-border text-sm h-28 outline-none focus:ring-2 focus:ring-brand-primary/10 resize-none font-bold text-brand-text" placeholder="记录本次访谈的核心沟通内容..." value={newVisit.content} onChange={e => setNewVisit({...newVisit, content: e.target.value})} />
+              </section>
+              
+              <section>
+                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">疗效价值信息</label>
+                <textarea className="w-full bg-white p-4 rounded-xl border border-brand-border text-sm h-24 outline-none focus:ring-2 focus:ring-brand-primary/10 resize-none font-bold text-brand-text" placeholder="记录专家对产品疗效、优势等方面的反馈..." value={newVisit.efficacyInfo} onChange={e => setNewVisit({...newVisit, efficacyInfo: e.target.value})} />
+              </section>
+
+              <section>
+                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">安全性价值信息</label>
+                <textarea className="w-full bg-white p-4 rounded-xl border border-brand-border text-sm h-24 outline-none focus:ring-2 focus:ring-brand-primary/10 resize-none font-bold text-brand-text" placeholder="记录专家对产品安全性、副作用等方面的反馈..." value={newVisit.safetyInfo} onChange={e => setNewVisit({...newVisit, safetyInfo: e.target.value})} />
+              </section>
+
+              <section>
+                <label className="text-[10px] font-black text-brand-subtext uppercase tracking-widest mb-2 block">竞品动态</label>
+                <textarea className="w-full bg-white p-4 rounded-xl border border-brand-border text-sm h-24 outline-none focus:ring-2 focus:ring-brand-primary/10 resize-none font-bold text-brand-text" placeholder="记录竞品相关的市场活动、专家反馈等..." value={newVisit.competitor || ''} onChange={e => setNewVisit({...newVisit, competitor: e.target.value})} />
+              </section>
 
               <div className="flex gap-3 pt-2">
-                <Button variant="ghost" onClick={() => setShowBatchModal(false)} className="flex-1 bg-brand-light">取消</Button>
-                <Button onClick={handleBatchUpdate} className="flex-1 bg-brand-text hover:bg-black shadow-xl">确认批量更新</Button>
+                <Button variant="ghost" onClick={() => {setShowVisitModal(false); setQuickRecordKolId(null);}} className="flex-1">取消</Button>
+                <Button onClick={addVisit} className="flex-[2]">完成记录</Button>
               </div>
             </div>
-          </Card>
+          </div>
         </div>
       )}
-
     </div>
   );
 }

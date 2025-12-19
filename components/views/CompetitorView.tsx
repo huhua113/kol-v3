@@ -1,71 +1,116 @@
-import React from 'react';
-import { Download, Trash2, AlertTriangle, Calendar } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Download, Trash2, Calendar, Search, Zap, ShieldCheck, User, MapPin, LayoutGrid } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Kol, Visit } from '../../types';
 
-interface CompetitorViewProps {
+type IntelType = 'competitor' | 'efficacy' | 'safety';
+
+interface IntelligenceViewProps {
   kols: Kol[];
   visits: Visit[];
-  onDeleteVisit: (visitId: number) => void;
+  onDeleteVisit: (visitId: string, type: IntelType) => void;
 }
 
-export const CompetitorView: React.FC<CompetitorViewProps> = ({ kols, visits, onDeleteVisit }) => {
-  const compVisits = visits.filter(v => v.competitor).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  const exportCompetitorData = () => {
-    const data = visits.filter(v => v.competitor).map(v => {
-      const kol = kols.find(k => k.id === v.kolId);
-      return `${v.date} - ${kol?.name} (${kol?.dept}): ${v.competitor}`;
-    }).join('\n');
-    
-    const blob = new Blob([data], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'competitor_intel.txt';
-    a.click();
-  };
+export const CompetitorView: React.FC<IntelligenceViewProps> = ({ kols, visits, onDeleteVisit }) => {
+  const [search, setSearch] = useState('');
   
+  const allIntel = useMemo(() => {
+    const stream: Array<{
+      type: IntelType;
+      content: string;
+      date: string;
+      kolName: string;
+      dept: string;
+      hospital: string;
+      visitId: string;
+      timestamp: number;
+    }> = [];
+
+    visits.forEach(v => {
+      const k = kols.find(kol => kol.id === v.kolId);
+      if (!k) return;
+      if (v.competitor) stream.push({ type: 'competitor', content: v.competitor, date: v.date, kolName: k.name, dept: k.dept, hospital: k.hospital, visitId: v.id, timestamp: v.timestamp });
+      if (v.efficacyInfo) stream.push({ type: 'efficacy', content: v.efficacyInfo, date: v.date, kolName: k.name, dept: k.dept, hospital: k.hospital, visitId: v.id, timestamp: v.timestamp });
+      if (v.safetyInfo) stream.push({ type: 'safety', content: v.safetyInfo, date: v.date, kolName: k.name, dept: k.dept, hospital: k.hospital, visitId: v.id, timestamp: v.timestamp });
+    });
+
+    return stream.sort((a, b) => b.timestamp - a.timestamp);
+  }, [visits, kols]);
+
+  const filteredIntel = useMemo(() => {
+    const s = search.toLowerCase();
+    return allIntel.filter(i => 
+      i.content.toLowerCase().includes(s) || i.kolName.toLowerCase().includes(s) || i.hospital.toLowerCase().includes(s)
+    );
+  }, [allIntel, search]);
+
   return (
-    <div className="space-y-4 animate-fade-in">
-       <div className="flex justify-between items-center mb-4 sticky top-0 bg-brand-bg/95 backdrop-blur z-10 py-2">
-          <h2 className="text-lg font-bold text-brand-text flex items-center gap-2">
-            <AlertTriangle className="text-brand-accent" size={20}/>
-            竞品情报收集
+    <div className="space-y-5 animate-fade-in pb-24 px-1">
+       <div className="flex justify-between items-center mb-2">
+          <h2 className="text-xl font-black text-brand-text flex items-center gap-2">
+            <Zap className="text-brand-primary" size={24} fill="currentColor" />
+            情报中心
           </h2>
-          <Button variant="outline" onClick={exportCompetitorData} className="text-xs h-9 px-3 border-dashed">
-            <Download size={14} /> 导出数据
-          </Button>
        </div>
 
-       {compVisits.length === 0 && (
-         <div className="flex flex-col items-center justify-center text-brand-subtext py-20 opacity-60">
-             <AlertTriangle size={48} className="mb-2" />
-             <p>暂无竞品相关记录</p>
+       <div className="neu-inset flex items-center p-3">
+          <Search className="text-brand-subtext mr-3" size={18} />
+          <input 
+            className="w-full bg-transparent border-none text-sm outline-none"
+            placeholder="全文检索详情内容..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+       </div>
+
+       {filteredIntel.length === 0 && (
+         <div className="flex flex-col items-center justify-center text-brand-subtext py-20 opacity-40">
+             <LayoutGrid size={48} className="mb-4" />
+             <p className="text-sm font-bold">暂无相关情报详情</p>
          </div>
        )}
 
-       {compVisits.map(v => {
-         const k = kols.find(k => k.id === v.kolId);
-         return (
-           <Card key={v.id} className="relative border-l-4 border-l-brand-accent overflow-hidden">
-             <div className="flex justify-between text-xs text-brand-subtext mb-3">
-               <span className="flex items-center gap-1 bg-brand-light px-2 py-0.5 rounded">
-                   <Calendar size={12}/> {v.date}
-               </span>
-               <span className="font-bold text-brand-primary bg-indigo-50 px-2 py-0.5 rounded">{k?.name} - {k?.dept}</span>
+       <div className="space-y-6">
+         {filteredIntel.map((item) => (
+           <Card key={`${item.visitId}-${item.type}`} className="relative border-t-4 border-t-transparent">
+             <div className="flex justify-between items-start mb-4">
+                <div className="flex flex-col gap-1.5">
+                  <div className={`text-[9px] font-black px-3 py-1 rounded-full w-fit uppercase tracking-wider ${
+                    item.type === 'competitor' ? 'bg-brand-accent text-white shadow-neu-sm' : 
+                    item.type === 'efficacy' ? 'bg-brand-warning text-white shadow-neu-sm' : 'bg-brand-success text-white shadow-neu-sm'
+                  }`}>
+                    {item.type === 'competitor' ? '竞品' : item.type === 'efficacy' ? '疗效' : '安全'}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-sm font-black text-brand-text">
+                    <User size={14} className="text-brand-primary" />
+                    {item.kolName}
+                  </div>
+                  <div className="flex items-center gap-1 text-[10px] font-bold text-brand-subtext">
+                    <MapPin size={12} />
+                    {item.hospital}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 text-[10px] font-black text-brand-subtext bg-brand-light/50 px-2 py-1 rounded-xl shadow-neu-inner">
+                   <Calendar size={12}/> {item.date}
+                </div>
              </div>
-             <p className="text-sm text-brand-text font-medium leading-relaxed mb-4">{v.competitor}</p>
+
+             <div className="neu-inset p-4">
+               <p className="text-xs text-brand-text font-bold leading-relaxed italic">
+                 "{item.content}"
+               </p>
+             </div>
+
              <button 
-                onClick={() => onDeleteVisit(v.id)}
-                className="absolute bottom-3 right-3 text-brand-subtext hover:text-brand-accent hover:bg-rose-50 p-2 rounded-full transition-all"
+                onClick={() => onDeleteVisit(item.visitId, item.type)}
+                className="absolute bottom-3 right-3 text-brand-subtext/30 hover:text-brand-accent p-2 transition-all active:scale-90"
               >
                 <Trash2 size={16} />
              </button>
            </Card>
-         )
-       })}
+         ))}
+       </div>
     </div>
   );
 };

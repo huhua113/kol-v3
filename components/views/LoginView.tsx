@@ -1,5 +1,5 @@
 import React from 'react';
-import { Zap, ChevronRight, Lock, Sparkles } from 'lucide-react';
+import { Zap, ChevronRight, Lock, Sparkles, UserCheck } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 
@@ -10,53 +10,53 @@ interface LoginViewProps {
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ passcode, setPasscode, onLogin }) => (
-  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-primary via-purple-600 to-brand-accent p-6 relative overflow-hidden">
-    {/* Background Decorations */}
-    <div className="absolute top-20 left-10 w-32 h-32 bg-white/10 rounded-full blur-3xl animate-pulse-slow"></div>
-    <div className="absolute bottom-20 right-10 w-40 h-40 bg-brand-secondary/20 rounded-full blur-3xl animate-pulse-slow" style={{ animationDelay: '1s' }}></div>
+  <div className="min-h-screen flex items-center justify-center bg-brand-bg p-6 relative overflow-hidden">
+    {/* Abstract Morandi Shapes */}
+    <div className="absolute top-[-10%] right-[-10%] w-[300px] h-[300px] bg-brand-secondary opacity-20 rounded-full blur-[100px]"></div>
+    <div className="absolute bottom-[5%] left-[-5%] w-[250px] h-[250px] bg-brand-accent opacity-30 rounded-full blur-[80px]"></div>
     
-    <Card className="w-full max-w-sm text-center py-12 shadow-2xl border-none relative z-10 bg-white/95 backdrop-blur-xl">
-      <div className="mb-8 flex justify-center relative">
-        <div className="w-24 h-24 rounded-full bg-indigo-50 flex items-center justify-center animate-bounce-subtle">
-          <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-brand-primary to-purple-500 flex items-center justify-center text-white shadow-lg shadow-brand-primary/40">
-            <Zap size={36} fill="currentColor" className="drop-shadow-sm" />
-          </div>
+    <Card className="w-full max-w-sm py-12 px-8 text-center animate-scale-in">
+      <div className="mb-10 flex flex-col items-center">
+        <div className="w-20 h-20 rounded-[1.75rem] bg-brand-light flex items-center justify-center mb-6 shadow-inner-soft">
+          <Zap size={32} className="text-brand-primary" fill="currentColor" />
         </div>
-        <Sparkles className="absolute top-0 right-[35%] text-brand-warning animate-spin-slow" size={20} />
+        <h1 className="text-2xl font-bold text-brand-text tracking-tight mb-2">CKM Pro</h1>
+        <p className="text-brand-subtext text-xs font-medium tracking-wide">
+          让专家观念管理更具艺术感
+        </p>
       </div>
       
-      <h1 className="text-3xl font-black text-brand-text mb-2 tracking-tight">CKM Pro</h1>
-      <p className="text-brand-subtext mb-8 font-medium flex items-center justify-center gap-2">
-        <span className="w-1.5 h-1.5 rounded-full bg-brand-success"></span>
-        高效管理专家观念
-        <span className="w-1.5 h-1.5 rounded-full bg-brand-success"></span>
-      </p>
-      
-      <div className="relative mb-6 group px-6">
-        <div className="absolute left-10 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-brand-primary transition-colors">
+      <div className="space-y-6">
+        <div className="relative group">
+          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-subtext/60 transition-colors group-focus-within:text-brand-primary">
             <Lock size={18} />
+          </div>
+          <input 
+            type="password" 
+            placeholder="输入邀请码" 
+            className="w-full pl-12 pr-4 py-4 rounded-[1.25rem] bg-brand-light border-0 focus:ring-2 focus:ring-brand-primary/20 transition-all text-center text-lg tracking-[0.5em] placeholder:tracking-normal placeholder:text-brand-subtext/40 outline-none"
+            value={passcode}
+            onChange={e => setPasscode(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && onLogin()}
+          />
         </div>
-        <input 
-          type="password" 
-          placeholder="输入通行码" 
-          className="w-full pl-12 pr-4 py-4 rounded-xl border-2 border-brand-light bg-brand-bg text-center text-lg tracking-widest focus:outline-none focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/10 transition-all placeholder:tracking-normal placeholder:text-gray-400"
-          value={passcode}
-          onChange={e => setPasscode(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && onLogin()}
-        />
-      </div>
-      
-      <div className="px-6">
-        <Button onClick={onLogin} className="w-full py-3.5 text-base shadow-xl shadow-brand-primary/20 rounded-xl group relative overflow-hidden">
-          <span className="relative z-10 flex items-center justify-center gap-2">
-            进入系统 <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
-          </span>
+        
+        <Button onClick={onLogin} variant="primary" className="w-full group">
+          进入工作台 <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
         </Button>
+      </div>
+
+      <div className="mt-12 flex items-center justify-center gap-2 opacity-30 grayscale">
+         <div className="h-[1px] w-8 bg-brand-text"></div>
+         <Sparkles size={14} />
+         <div className="h-[1px] w-8 bg-brand-text"></div>
       </div>
     </Card>
     
-    <p className="absolute bottom-6 text-white/50 text-xs font-medium tracking-wide">
-        Powered by Mobile-First Logic
-    </p>
+    <div className="absolute bottom-10 left-0 right-0 text-center">
+       <p className="text-[10px] text-brand-subtext font-bold uppercase tracking-[0.2em] opacity-50">
+         Sophisticated Intel Management
+       </p>
+    </div>
   </div>
 );

@@ -8,12 +8,10 @@ export const LEVELS: LevelDef[] = [
   { id: 5, label: 'S5 观念领袖' }
 ];
 
-export const INITIAL_SURGERY = [
-  "韩晓东", "姚立彬", "梁辉", "朱孝成", "姚琪远", "孙喜太", "顾岩", "毛忠琦", 
-  "朱江帆", "管蔚", "花荣", "王兵", "杨建军", "楼文晖", "张频", "申晓军", "刘伟杰", "谢晓峰"
+export const PRODUCTS = [
+  "icosema", "诺和期", "诺和盈", "诺和泰", "诺和忻", "其他"
 ];
 
-export const INITIAL_NUTRITION = [
-  "吴江", "徐冬连", "汤庆娅", "高键", "徐仁应", "葛声", "韩婷", "孙文广", 
-  "施咏梅", "冯颖", "陈洁文", "王静", "冯一", "马向华", "金晖"
+export const DISEASE_AREAS = [
+  "T2D", "OB", "CV", "MASH", "CKD", "其他"
 ];
